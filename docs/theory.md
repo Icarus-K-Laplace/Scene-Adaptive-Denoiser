@@ -1,23 +1,41 @@
-# Theoretical Formulation
+# Theoretical Formulation: Scene-Adaptive Denoising
 
 ## 1. The Core Conflict
-In infrared hot targets as noise.
+In infrared image restoration, we face a fundamental conflict:
+*   **Noise Removal** requires smoothing high-frequency components (outliers).
+*   **Target Preservation** requires keeping high-frequency components (edges, hot spots).
 
-## 2. Our Solution: Soft Fusion
-We propose a soft fusion formulation:
+Standard filters use a hard threshold: `if pixel_diff > T then smooth`. This binary decision often misclassifies small, hot targets as noise, leading to signal loss.
+
+## 2. Our Solution: Soft Probabilistic Fusion
+Instead of a hard switch, we propose a soft fusion formulation:
 $$ \hat{I} = (1 - \alpha) I_{obs} + \alpha I_{restored} $$
 
-The key is the design of $\alpha$, which represents the **probability of being noise**.
+Here, $\alpha \in [0, 1]$ represents the **probability of being noise**.
 
-## 3. Deriving Alpha
-We model $\alpha$ as a joint probability:
+## 3. Deriving Alpha ($\alpha$)
+We model $\alpha$ as a joint probability conditioned on local and global cues:
 $$ \alpha \approx P(\text{Noise} | \text{Local}, \text{Global}) $$
 
 This is decomposed into three factors:
-1.  **Local Likelihood ($L$)**: How different is the pixel from its neighbors?
-2.  **Saliency Prior ($S$)**: Is this pixel part of a hot target? (Inversely related to noise probability)
-3.  **Scene Modulator ($\gamma$)**: Is the overall scene high-contrast?
 
-$$ \alpha = \gamma \cdot \text{Sigmoid}(L) \cdot (1 - S) $$
+### A. Local Impulse Likelihood ($L$)
+Measures how much a pixel deviates from its neighborhood statistics.
+$$ L(x) = \frac{|I(x) - \mu_{local}|}{\sigma_{local} + \epsilon} $$
+High $L$ suggests a potential outlier.
 
-This formulation ensures that even if a pixel looks like noise locally (high $L$), it will be preserved if it is part of a salient target (high $S$).
+### B. Thermal Saliency Prior ($S$)
+In thermal images, targets are often rare (high Z-score) and have structure (high gradient).
+$$ S(x) = \text{Sigmoid}(Z_{global}) \cdot \|\nabla I\| $$
+High $S$ means the pixel is likely a target, so we should **reduce** $\alpha$.
+
+### C. Scene Modulator ($\gamma$)
+A global parameter that adjusts aggressiveness based on the scene's dynamic range.
+$$ \gamma = f\left(\frac{I_{max}}{I_{mean}}\right) $$
+If the scene has extreme hot spots, $\gamma$ decreases to prevent over-smoothing.
+
+## 4. Final Equation
+combining these terms, we get the adaptive weight:
+$$ \alpha = \gamma \cdot \text{Sigmoid}(L) \cdot (1 - S) \cdot (1 - \text{Structure}) $$
+
+This formulation ensures that even if a pixel looks like noise locally (high $L$), it will be preserved if it is part of a salient target (high $S$) or a strong edge.
